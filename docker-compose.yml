@@ -128,7 +128,6 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - ./test-init.js:/docker-entrypoint-initdb.d/test-init.js:ro
       - mongodb_data:/data/db
     networks:
       - bigdata-network

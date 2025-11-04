@@ -1,0 +1,162 @@
+services:
+
+  db:
+    image: postgres:15
+    container_name: highload_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: highload
+      POSTGRES_DB: highload_db
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgresdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+      - ./data:/tmp/data
+    ports:
+      - 5432:5432
+    networks:
+      - bigdata-network
+
+
+  spark-app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    command: >
+        sh -c "
+          echo 'Запуск ETL_snowflake' &&
+          /opt/spark/bin/spark-submit /app/ETL_snowflake.py &&
+          echo 'Запуск ETL_report...' &&
+          /opt/spark/bin/spark-submit /app/ETL_report_all.py
+        "
+    volumes:
+      - ./notebooks/:/app/
+    networks:
+      - bigdata-network
+
+
+
+  # pyspark-notebook:
+  #   image: ruslanmv/pyspark-notebook:3.1.2
+  #   ports:
+  #     - "8888:8888"
+  #   environment:
+  #     - GRANT_SUDO=yes
+  #   volumes:
+  #     - ./postgresql-42.7.8.jar:/opt/spark/jars/postgresql-42.7.8.jar
+  #     - ./clickhouse-jdbc-0.9.2-all-dependencies.jar:/opt/spark/jars/clickhouse-jdbc-0.9.2-all-dependencies.jar
+  #     - ./notebooks:/home/jovyan/work
+  #   networks:
+  #     - bigdata-network
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native protocol
+    environment:
+      CLICKHOUSE_DB: mydb
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: password
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - bigdata-network
+
+  cassandra:
+    image: cassandra:latest
+    container_name: cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    ports:
+      - "9042:9042"  # CQL port
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    networks:
+      - bigdata-network
+
+  neo4j:
+    image: neo4j:latest
+    container_name: neo4j
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    healthcheck:
+      test: wget http://localhost:7474 || exit 1
+      interval: 1s
+      timeout: 10s
+      retries: 20
+      start_period: 3s
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - bigdata-network
+
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=test_db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./test-init.js:/docker-entrypoint-initdb.d/test-init.js:ro
+      - mongodb_data:/data/db
+    networks:
+      - bigdata-network
+
+  valkey:
+    image: valkey/valkey:latest
+    container_name: valkey
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    networks:
+      - bigdata-network
+
+volumes:
+  clickhouse_data:
+  cassandra_data:
+  neo4j_data:
+  mongodb_data:
+  valkey_data:
+  postgresdata:
+
+networks:
+  bigdata-network:
+    driver: bridge
+  

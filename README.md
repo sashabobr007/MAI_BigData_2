@@ -9,9 +9,11 @@ docker-compose up --build -d
 docker-compose down
 ```
 
-# Отчеты в Datalens (если не грузится - перезагрузите страницу)
+# Отчеты в Datalens 
+### (если не грузится - перезагрузите страницу, или посмотрите видео - clickhouse лежит на слабой ВМ)
 [Datalens](https://datalens.yandex/oz5u7s2o0e9u9)
 
+[Datalens_video](https://disk.yandex.ru/i/DaRDpp4Z4h9Ybw)
 
 
 # Скрипт с анализом данных
